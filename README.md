@@ -19,29 +19,81 @@ WorkBuddy / CodeBuddy 网关（`www.codebuddy.cn` → `wb-proxy`）在**入口**
 
 ## 安装
 
+装之前只需要准备一样东西：**上游地址**（网关的 host:port，或带路径的 host/path）。
+其余参数都有默认值，想改就在安装时填。
+
+### 方式一：交互安装（推荐，Linux / macOS / Windows 通用）
+
 ```bash
-# 1) 链接进 profile 的 node_modules（本地目录用 symlink，等价于 pnpm add link:）
-ln -sfn /path/to/dsh-wb-sanitizer $DSH_HOME/profiles/web/node_modules/dsh-wb-sanitizer
-
-# 2) 注册成 bundle
-python3 - <<'PY'
-import json
-p = "$DSH_HOME/profiles/web/package.json"
-d = json.load(open(p))
-b = d["dsh"]["profile"]["bundles"]
-if "dsh-wb-sanitizer" not in b:
-    b.append("dsh-wb-sanitizer")
-json.dump(d, open(p, "w"), indent=2, ensure_ascii=False)
-PY
-
-# 3) 重启（会断开当前 Web 会话，重连即可，会话数据在磁盘）
-systemctl restart dsh-web
+git clone https://github.com/PM25OO/dsh-wb-sanitizer.git
+cd dsh-wb-sanitizer
+node install.mjs
 ```
+
+它会依次问你三件事，然后自动完成所有改动：
+
+```
+安装 dsh-wb-sanitizer
+  profile: ~/.dsh/profiles/web
+
+① 上游地址（必填，多个用逗号分隔）
+   例: 192.0.2.10:8788 或 gateway.example.com/v1
+   > 192.0.2.10:8788
+② 首条 system 超过多少字符就搬运尾部（回车用默认 12000）
+   >
+③ 审计日志路径（回车跳过）
+   >
+```
+
+### 方式二：一行命令，不交互
+
+```bash
+node install.mjs --upstream UPSTREAM_HOST:PORT --split-limit 12000 --yes
+```
+
+需要审计日志就多加 `--audit /path/to/audit.jsonl`。
+
+### 方式三：先写配置文件再装
+
+```bash
+cp config.example.json my-config.json
+# 编辑 my-config.json，把 UPSTREAM_HOST:PORT 换成你的上游
+node install.mjs --config my-config.json --yes
+```
+
+`config.example.json`：
+
+```json
+{
+  "upstreamHosts": ["UPSTREAM_HOST:PORT"],
+  "splitLimit": 12000,
+  "keywordBreak": true,
+  "auditLog": "",
+  "verbose": false
+}
+```
+
+### 安装器做了什么
+
+1. 把包放进 `<DSH_HOME>/profiles/<profile>/node_modules/`（Linux/macOS 用 symlink，Windows 用 junction，都不行时自动复制）
+2. 在 profile 的 `package.json` 里把 `dsh-wb-sanitizer` 加进 `dsh.profile.bundles`
+3. 在 profile 的 `cordis.patch.yml` 里写入配置块（带 `# >>> dsh-wb-sanitizer >>>` 标记，重复安装整块替换）
+4. 打印该平台的重启命令
+
+**不会重启任何服务**，不会碰你的其它配置。
+
+### 装完重启
+
+| 平台 | 命令 |
+|---|---|
+| Linux (systemd) | `systemctl restart dsh-web` |
+| macOS | 重启 `dsh web` 进程 |
+| Windows | 关掉 `dsh web` 窗口再重新打开 |
 
 启动日志里应出现：
 
 ```
-[wb-sanitizer] active · hosts=UPSTREAM_HOST:PORT splitLimit=12000 audit=<repo>/audit.jsonl
+[wb-sanitizer] active · hosts=UPSTREAM_HOST:PORT splitLimit=12000
 ```
 
 装好之后 provider 的 `baseURL` 可以改回**直连上游**，不再需要任何本地 HTTP 代理：
@@ -52,6 +104,21 @@ systemctl restart dsh-web
     providers:
       wb-proxy:
         baseURL: http://UPSTREAM_HOST:PORT/v1
+```
+
+### 只看不改 / 卸载
+
+```bash
+node install.mjs --upstream UPSTREAM_HOST:PORT --dry-run   # 显示会改什么
+node install.mjs --uninstall                               # 卸载，清理干净
+```
+
+### 手动安装（不想跑安装器）
+
+```bash
+ln -sfn /path/to/dsh-wb-sanitizer $DSH_HOME/profiles/web/node_modules/dsh-wb-sanitizer
+# 然后把 "dsh-wb-sanitizer" 加进 $DSH_HOME/profiles/web/package.json 的 dsh.profile.bundles
+# 再往 $DSH_HOME/profiles/web/cordis.patch.yml 追加下面的配置块
 ```
 
 ## 配置
@@ -130,6 +197,8 @@ systemctl restart dsh-web
 ## 结构
 
 ```
+install.mjs                  跨平台安装器（交互 / 参数 / 配置文件 / 卸载 / dry-run）
+config.example.json          配置文件模板
 lib/sanitize.js              纯函数：breakToken / scrub / reshape / processBody / shouldSanitize
 lib/index.js                 cordis 插件：包装 globalThis.fetch，双向透明
 bin/wb-sanitizer-proxy.js    独立 HTTP 代理（复用 lib/sanitize.js）

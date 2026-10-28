@@ -10,17 +10,20 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "wb-sanitizer-proxy": "bin/wb-sanitizer-proxy.js"
+    "wb-sanitizer-proxy": "bin/wb-sanitizer-proxy.js",
+    "dsh-wb-sanitizer-install": "install.mjs"
   },
   "files": [
     "lib",
     "bin",
+    "install.mjs",
     "cordis.patch.yml",
     "README.md"
   ],
   "scripts": {
-    "test": "node --test test/",
-    "proxy": "node bin/wb-sanitizer-proxy.js"
+    "test": "node --test test/sanitize.test.mjs",
+    "proxy": "node bin/wb-sanitizer-proxy.js",
+    "install-dsh": "node install.mjs"
   },
   "keywords": [
     "dsh",

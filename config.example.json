@@ -1,0 +1,7 @@
+{
+  "upstreamHosts": ["UPSTREAM_HOST:PORT"],
+  "splitLimit": 12000,
+  "keywordBreak": true,
+  "auditLog": "",
+  "verbose": false
+}
