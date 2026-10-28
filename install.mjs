@@ -49,6 +49,7 @@ dsh-wb-sanitizer 安装器
   --profile <name>            DSH profile 名（默认 web）
   --dsh-home <dir>            DSH 主目录（默认 $DSH_HOME 或 ~/.dsh）
   --no-keyword                不做关键词断开（只做体量搬运）
+  --config-only               只写配置，不动 node_modules 与 bundles（配合 dsh plugin add）
   --yes, -y                   非交互，缺的配置用默认值
   --help, -h                  显示本帮助
 `;
@@ -235,6 +236,7 @@ async function main() {
   const dryRun = has("--dry-run");
   const yes = has("--yes") || has("-y");
   const uninstall = has("--uninstall");
+  const configOnly = has("--config-only");
   const dshHome = resolveDshHome(valOf("--dsh-home"));
   const profileName = valOf("--profile", "web");
   const profileDir = path.join(dshHome, "profiles", profileName);
@@ -253,11 +255,23 @@ async function main() {
   if (uninstall) {
     console.log(`卸载 ${PKG_NAME}`);
     info(`profile: ${profileDir}`);
-    const dest = path.join(profileDir, "node_modules", PKG_NAME);
-    if (fs.existsSync(dest) && !dryRun) fs.rmSync(dest, { recursive: true, force: true });
-    ok(`移除 node_modules/${PKG_NAME}`);
-    const removed = unregisterBundle(profileDir, dryRun);
-    ok(removed ? "从 dsh.profile.bundles 摘除" : "bundles 里本来就没有");
+
+    // 由 dsh plugin 装的（dependencies 有记录）不能手工删 node_modules，
+    // 否则 pnpm 的 store 记录会与实际不符；这种情况只清理配置并给出正确命令。
+    const manifest = readJson(path.join(profileDir, "package.json")) ?? {};
+    const managedByPnpm = Boolean(manifest.dependencies?.[PKG_NAME]);
+
+    if (managedByPnpm) {
+      ok("包由 dsh plugin 管理，跳过手工删除");
+      info(`摘除依赖请执行：dsh plugin --profile ${profileName} remove ${PKG_NAME}`);
+    } else {
+      const dest = path.join(profileDir, "node_modules", PKG_NAME);
+      if (fs.existsSync(dest) && !dryRun) fs.rmSync(dest, { recursive: true, force: true });
+      ok(`移除 node_modules/${PKG_NAME}`);
+      const removed = unregisterBundle(profileDir, dryRun);
+      ok(removed ? "从 dsh.profile.bundles 摘除" : "bundles 里本来就没有");
+    }
+
     const cfgRemoved = removeConfig(profileDir, dryRun);
     ok(cfgRemoved ? "清理 cordis.patch.yml 配置" : "cordis.patch.yml 无相关配置");
     console.log("\n重启 DSH 生效：\n  systemctl restart dsh-web   # Linux\n  重启 dsh web                # macOS / Windows\n");
@@ -333,15 +347,26 @@ async function main() {
 
   // ---------- 执行安装 ----------
   console.log("");
-  const link = linkPackage(profileDir, dryRun);
-  ok(`${dryRun ? "将" : "已"}放置包 → ${link.dest}（${link.mode}）`);
+  if (configOnly) {
+    const installed = fs.existsSync(path.join(profileDir, "node_modules", PKG_NAME));
+    if (!installed) {
+      fail(
+        `--config-only 要求包已装好，但 ${path.join(profileDir, "node_modules", PKG_NAME)} 不存在。\n` +
+          `  先执行：dsh plugin --profile ${profileName} add github:PM25OO/dsh-wb-sanitizer`,
+      );
+    }
+    ok("包已由 dsh plugin 管理，跳过放置与 bundles 注册");
+  } else {
+    const link = linkPackage(profileDir, dryRun);
+    ok(`${dryRun ? "将" : "已"}放置包 → ${link.dest}（${link.mode}）`);
 
-  const reg = registerBundle(profileDir, dryRun);
-  ok(
-    reg.already
-      ? "bundle 已在 dsh.profile.bundles 中"
-      : `${dryRun ? "将" : "已"}登记 bundle → dsh.profile.bundles`,
-  );
+    const reg = registerBundle(profileDir, dryRun);
+    ok(
+      reg.already
+        ? "bundle 已在 dsh.profile.bundles 中"
+        : `${dryRun ? "将" : "已"}登记 bundle → dsh.profile.bundles`,
+    );
+  }
 
   const cfgFile = writeConfigBlock(profileDir, cfg, dryRun);
   ok(`${dryRun ? "将" : "已"}写入配置 → ${cfgFile}`);

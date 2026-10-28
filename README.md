@@ -19,10 +19,29 @@ WorkBuddy / CodeBuddy 网关（`www.codebuddy.cn` → `wb-proxy`）在**入口**
 
 ## 安装
 
-装之前只需要准备一样东西：**上游地址**（网关的 host:port，或带路径的 host/path）。
+装之前只需要准备一样东西：**上游地址**（网关的 `host:port`，或带路径的 `host/path`）。
 其余参数都有默认值，想改就在安装时填。
 
-### 方式一：交互安装（推荐，Linux / macOS / Windows 通用）
+### 方式一：dsh plugin（最原生，推荐）
+
+```bash
+# 1) 装包 + 自动注册 bundle
+dsh plugin --profile web add github:PM25OO/dsh-wb-sanitizer
+
+# 2) 写配置（这一步 dsh plugin 不会代劳）
+node install.mjs --config-only --upstream UPSTREAM_HOST:PORT --yes
+```
+
+本地开发时把第 1 步换成路径即可：
+
+```bash
+dsh plugin --profile web add /path/to/dsh-wb-sanitizer
+```
+
+`dsh plugin` 是 pnpm 的前置壳，它会做两件事：把包装进 `node_modules`（记录到 `dependencies`），
+并**自动把包名加进 `dsh.profile.bundles`**。它不做的是：写插件配置（`hosts` 必填）。
+
+### 方式二：交互安装（一条命令，全平台）
 
 ```bash
 git clone https://github.com/PM25OO/dsh-wb-sanitizer.git
@@ -30,7 +49,7 @@ cd dsh-wb-sanitizer
 node install.mjs
 ```
 
-它会依次问你三件事，然后自动完成所有改动：
+它会依次问三件事，然后自动完成所有改动：
 
 ```
 安装 dsh-wb-sanitizer
@@ -45,7 +64,7 @@ node install.mjs
    >
 ```
 
-### 方式二：一行命令，不交互
+### 方式三：一行命令，不交互
 
 ```bash
 node install.mjs --upstream UPSTREAM_HOST:PORT --split-limit 12000 --yes
@@ -53,15 +72,13 @@ node install.mjs --upstream UPSTREAM_HOST:PORT --split-limit 12000 --yes
 
 需要审计日志就多加 `--audit /path/to/audit.jsonl`。
 
-### 方式三：先写配置文件再装
+### 方式四：先写配置文件再装
 
 ```bash
 cp config.example.json my-config.json
 # 编辑 my-config.json，把 UPSTREAM_HOST:PORT 换成你的上游
 node install.mjs --config my-config.json --yes
 ```
-
-`config.example.json`：
 
 ```json
 {
@@ -73,14 +90,15 @@ node install.mjs --config my-config.json --yes
 }
 ```
 
-### 安装器做了什么
+### 各方式分别做了什么
 
-1. 把包放进 `<DSH_HOME>/profiles/<profile>/node_modules/`（Linux/macOS 用 symlink，Windows 用 junction，都不行时自动复制）
-2. 在 profile 的 `package.json` 里把 `dsh-wb-sanitizer` 加进 `dsh.profile.bundles`
-3. 在 profile 的 `cordis.patch.yml` 里写入配置块（带 `# >>> dsh-wb-sanitizer >>>` 标记，重复安装整块替换）
-4. 打印该平台的重启命令
-
-**不会重启任何服务**，不会碰你的其它配置。
+| 步骤 | `dsh plugin add` | `install.mjs` | `install.mjs --config-only` |
+|---|---|---|---|
+| 装包进 node_modules | ✅ | ✅（symlink / junction / 复制） | — |
+| 写入 `dependencies` | ✅ | — | — |
+| 注册 `dsh.profile.bundles` | ✅ 自动 | ✅ | — |
+| 写插件配置块 | — | ✅ | ✅ |
+| 重启服务 | — | — | — |
 
 ### 装完重启
 
@@ -109,16 +127,23 @@ node install.mjs --config my-config.json --yes
 ### 只看不改 / 卸载
 
 ```bash
-node install.mjs --upstream UPSTREAM_HOST:PORT --dry-run   # 显示会改什么
-node install.mjs --uninstall                               # 卸载，清理干净
+node install.mjs --upstream UPSTREAM_HOST:PORT --dry-run   # 显示会改什么，不落盘
+node install.mjs --uninstall                               # 清理配置；包由 pnpm 管理时会提示正确命令
 ```
 
-### 手动安装（不想跑安装器）
+用 `dsh plugin` 装的，标准卸载顺序：
+
+```bash
+dsh plugin --profile web remove dsh-wb-sanitizer   # 摘依赖 + 摘 bundle
+node install.mjs --uninstall                       # 清配置块
+```
+
+### 手动安装（不想跑安装器，也不想用 dsh plugin）
 
 ```bash
 ln -sfn /path/to/dsh-wb-sanitizer $DSH_HOME/profiles/web/node_modules/dsh-wb-sanitizer
 # 然后把 "dsh-wb-sanitizer" 加进 $DSH_HOME/profiles/web/package.json 的 dsh.profile.bundles
-# 再往 $DSH_HOME/profiles/web/cordis.patch.yml 追加下面的配置块
+# 再往 $DSH_HOME/profiles/web/cordis.patch.yml 追加配置块
 ```
 
 ## 配置
@@ -182,17 +207,18 @@ tail -f /tmp/wb-audit.jsonl
 ## 回滚
 
 ```bash
-python3 - <<'PY'
-import json
-p = "$DSH_HOME/profiles/web/package.json"
-d = json.load(open(p))
-d["dsh"]["profile"]["bundles"] = [x for x in d["dsh"]["profile"]["bundles"] if x != "dsh-wb-sanitizer"]
-json.dump(d, open(p, "w"), indent=2, ensure_ascii=False)
-PY
-systemctl restart dsh-web
+# 用 dsh plugin 装的
+dsh plugin --profile web remove dsh-wb-sanitizer
+node install.mjs --uninstall      # 清掉配置块
+
+# 用 install.mjs 装的
+node install.mjs --uninstall
+
+# 两者都做完后重启
+systemctl restart dsh-web         # Linux
 ```
 
-卸载后 DSH 立即回到「只在 dsh-purge 影响下」的状态。
+卸载后 DSH 立即回到「只在 dsh-purge 影响下」的状态，不会残留配置。
 
 ## 结构
 
