@@ -1,0 +1,23 @@
+# dsh-wb-sanitizer bundle patch
+#
+# 本插件只有一个条目：把 fetch 边界的出口清洗装进进程。
+# 目标上游由 hosts 决定，默认是 WorkBuddy/CodeBuddy 反代；
+# 换成别的网关时只改 hosts，不用动 provider 的 baseURL。
+
+- insert:
+    - id: wb-sanitizer
+      name: dsh-wb-sanitizer
+      config:
+        enabled: true
+        # 只清洗发往这些目标的请求。支持 host:port / hostname / host/path。
+        # 必填：换成一个或多个上游地址，支持 host:port / hostname / host/path。
+        # 留空则插件不接管任何请求（启动日志会提示）。
+        hosts: []
+        # 首条 system 超过这个字符数就把尾部搬进一条 user 消息。
+        # 实测临界点在 22153 附近（22152 通过、22153 触发），留足余量。
+        splitLimit: 12000
+        # DeepSeek​ Harness → DeepSeek\u200B Harness，断开通路关键词匹配。
+        keywordBreak: true
+        # 设成文件路径可留下 JSONL 审计（模型、体量、是否改写）。
+        auditLog: ""
+        verbose: false

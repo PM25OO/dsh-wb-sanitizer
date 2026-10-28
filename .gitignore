@@ -1,0 +1,17 @@
+# 运行时产物
+audit.jsonl
+*.log
+
+# 本地备份
+*.bak
+*.bak-*
+*.dshpurge.bak
+
+# 依赖
+node_modules/
+pnpm-lock.yaml
+
+# 编辑器 / 系统
+.DS_Store
+.vscode/
+.idea/

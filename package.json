@@ -1,0 +1,48 @@
+{
+  "name": "dsh-wb-sanitizer",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness 出口清洗插件：在 fetch 边界无损改写请求体，绕过 WorkBuddy/CodeBuddy 网关的 400 (code 11-128) 渠道指纹校验（关键词断开 + 超长 system 搬运）。零外部进程、响应流原样透传。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./sanitize": "./lib/sanitize.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "wb-sanitizer-proxy": "bin/wb-sanitizer-proxy.js"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/",
+    "proxy": "node bin/wb-sanitizer-proxy.js"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "workbuddy",
+    "codebuddy",
+    "11-128",
+    "egress",
+    "sanitizer"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dshTarget": "0.2.1-rc.2"
+}
